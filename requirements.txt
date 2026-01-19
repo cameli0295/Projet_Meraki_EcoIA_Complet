@@ -3,3 +3,6 @@ matplotlib
 scikit-learn
 streamlit
 python-dotenv
+pandas
+statsmodels
+openpyxl

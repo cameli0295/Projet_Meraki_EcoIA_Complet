@@ -1,10 +1,21 @@
+import importlib.util
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import streamlit as st
-from statsmodels.tsa.seasonal import STL
-from statsmodels.tsa.stattools import adfuller
-from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+
+def ensure_statsmodels():
+    if importlib.util.find_spec("statsmodels") is None:
+        st.error(
+            "Le module `statsmodels` est requis. Installez les dépendances avec "
+            "`pip install -r requirements.txt` puis relancez l'application."
+        )
+        st.stop()
+    from statsmodels.tsa.seasonal import STL
+    from statsmodels.tsa.stattools import adfuller
+    from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+    return STL, adfuller, SARIMAX
 
 st.set_page_config(page_title="Séries temporelles - Streamlit", layout="wide")
 
@@ -54,6 +65,7 @@ if uploaded_file:
     )
 
     if len(series_data) >= seasonal_period * 2:
+        STL, _, _ = ensure_statsmodels()
         stl = STL(series_data[value_column], period=seasonal_period)
         stl_result = stl.fit()
 
@@ -79,13 +91,21 @@ if uploaded_file:
         st.warning("La série est trop courte pour la décomposition STL.")
 
     st.subheader("Stationnarité (ADF)")
-    adf_stat, adf_p_value, _, _, _, _ = adfuller(series_data[value_column].dropna())
-    st.write(f"Statistique ADF : {adf_stat:.4f}")
-    st.write(f"Valeur p : {adf_p_value:.4f}")
-    if adf_p_value < 0.05:
-        st.success("La série semble stationnaire (p < 0.05).")
+    _, adfuller, _ = ensure_statsmodels()
+    series_values = series_data[value_column].dropna()
+    if len(series_values) < 10:
+        st.warning("Pas assez de données pour le test ADF (minimum 10 observations).")
     else:
-        st.info("La série semble non stationnaire (p ≥ 0.05).")
+        try:
+            adf_stat, adf_p_value, _, _, _, _ = adfuller(series_values)
+            st.write(f"Statistique ADF : {adf_stat:.4f}")
+            st.write(f"Valeur p : {adf_p_value:.4f}")
+            if adf_p_value < 0.05:
+                st.success("La série semble stationnaire (p < 0.05).")
+            else:
+                st.info("La série semble non stationnaire (p ≥ 0.05).")
+        except ValueError as error:
+            st.warning(f"Test ADF impossible : {error}")
 
     st.subheader("Modélisation")
     model_choice = st.radio("Choix du modèle", ["ARIMA", "SARIMA"], horizontal=True)
@@ -113,6 +133,7 @@ if uploaded_file:
         seasonal_order = (seasonal_p, seasonal_d, seasonal_q, seasonal_m)
 
     if st.button("Entraîner le modèle"):
+        _, _, SARIMAX = ensure_statsmodels()
         model = SARIMAX(
             series_data[value_column],
             order=(p_order, d_order, q_order),
